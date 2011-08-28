@@ -1,0 +1,5 @@
+﻿A General High Performance Ring buffer for scanning pattern from file stream.
+
+This is ANSI C, just use ringbuf.[ch] in your project. support MSVC and GNU.
+License is BSD, so you are free to use in in your (commercial)
+product as long as you retain the copyright text in the files.
