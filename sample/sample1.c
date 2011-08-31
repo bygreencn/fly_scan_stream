@@ -1,5 +1,5 @@
 /*
-   A General High Performance Ring buffer for scanning pattern from file stream
+   A General High Performance rb buffer for scanning pattern from file stream
 
    Copyright (c) 2011 Sui Libin <bygreencn AT gmail DOT com>
    All rights reserved.
@@ -26,52 +26,32 @@
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
    THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+#include<stdio.h>
+#include "ringbuf.h"
 
-#ifndef __RINGBUF_H__
-#define __RINGBUF_H__
-
-#define RB_DEBUG
-
-typedef short bool;
-#define true 1
-#define false 0
-
-
-#define RB_MIN_CAPACITY (1024)
-#define RB_CAPACITY(v) ((v/1024
-
-enum RB_STATUS
+int main(int argc,char **argv)
 {
-	RB_SUCCESS = 0,
-	RB_ERROR = -1,
-	RB_NOT_SUPPORT = -2,
-	RB_FATAL_ERROR = -3
+	RingBuffer* rb;
+	int i;
+	unsigned char buffer[128];
+	printf("fly_scan_stream Sample\n\n");
+
+	for(i=0; i<128; i++)
+		buffer[i] = i;
+
+	rb_create(&rb, 16, 5,false, false);
+	for(i=0; i< 128; i++)
+	{
+		rb_write(rb, buffer, i);
+		if(rb->size == rb->capacity)
+			rb_clear(rb);
+	}
+	rb_destroy(rb);
+
+	rb_create(&rb, 128, 5,true, false);
+	rb_destroy(rb);
+
+	rb_create(&rb, 128, 5,false, true);
+	rb_destroy(rb);
+	return 0;
 };
-
-/**
-  the ringbuffer struct
-*/
-typedef struct _RingBuffer
-{
-	unsigned int * prealbuf;
-	unsigned char * buf;
-	unsigned int iwrite;      /* index for next pos to be write into */
-	unsigned int iread;      /* index for next pos to be read out */
-	unsigned int size;        /* size of used in buffer */
-	unsigned int capacity;     /* max size of buffer */
-	unsigned int min_threshold; /* minimum threshold that buffer need refresh, default should be the minimum size of scan pattern */
-	int lock;            /* internal lock */
-	bool b8bytealign;
-	bool bshiftalltime;
-} RingBuffer;
-
-
-typedef int (*parser_fun)(unsigned char *, unsigned int);
-
-/* ring buffer functions */
-int rb_create(RingBuffer **, unsigned int , unsigned int ,bool,bool);
-void rb_destroy(RingBuffer*);
-int rb_clear (RingBuffer *);
-int rb_write (RingBuffer *, unsigned char *, unsigned int);
-int rb_read (RingBuffer *, parser_fun);
-#endif // end of __RINGBUF_H__

@@ -37,7 +37,7 @@
 #include <stdio.h>
 void ERROR(const char * msg)
 {
-        printf("RB-Error: %s\n", msg);
+	printf("RB-Error: %s\n", msg);
 }
 #else
 void ERROR(const char * msg)
@@ -51,91 +51,195 @@ void ERROR(const char * msg)
 
 
 int
-rb_create(RingBuffer **rb, int capacity, int threshold)
+rb_create(RingBuffer **prb, unsigned int capacity, unsigned int threshold,bool balign, bool bshift)
 {
-        RingBuffer *ring;
+	RingBuffer *rb;
 
-        if(rb==NULL) {
-                ERROR("Not specify the ringbuf address");
-                return RB_FATAL_ERROR;
-        }
+	if(prb==NULL)
+	{
+		ERROR("Not specify the ringbuf address");
+		return RB_FATAL_ERROR;
+	}
 
-        if(capacity <= 1024) {
-                ERROR("Capicity is too small");
-                return RB_NOT_SUPPORT;
-        }
+	if(capacity < 2)
+	{
+		ERROR("Capicity is too small");
+		return RB_NOT_SUPPORT;
+	}
 
-        if(threshold > capacity || threshold < 0) {
-                ERROR("threshold is wrong");
-                return RB_NOT_SUPPORT;
-        }
+	if(threshold > capacity || threshold < 0)
+	{
+		ERROR("threshold is wrong");
+		return RB_NOT_SUPPORT;
+	}
 
-        ring = malloc (sizeof (RingBuffer));
-        if(ring == NULL) {
-                ERROR("Not enough memory");
-                return RB_FATAL_ERROR;
-        }
-        memset (ring, 0, sizeof (RingBuffer));
+	rb = malloc (sizeof (RingBuffer));
+	if(rb == NULL)
+	{
+		ERROR("Not enough memory");
+		return RB_FATAL_ERROR;
+	}
+	memset (rb, 0, sizeof (RingBuffer));
 
-        ring->capacity = capacity;
-        ring->size = 0;
-        ring->min_threshold = threshold;
+	rb->capacity = capacity;
+	rb->size = 0;
+	rb->min_threshold = threshold;
+	rb->b8bytealign = balign;
+	rb->bshiftalltime = bshift;
 
-        ring->iput = 0;
-        ring->iget = 0;
-        ring->buf=malloc(sizeof(char)*(ring->capacity));
+	rb->iwrite = 0;
+	rb->iread = 0;
+	if(true == rb->b8bytealign)
+	{
+		rb->prealbuf = malloc(sizeof(char)*(rb->capacity+8));  // always keep the buffer address aligned at 8.
+		rb->buf = (unsigned char *)((unsigned int)rb->prealbuf&(~0x3));
+		rb->buf = (rb->buf == (unsigned char *) rb->prealbuf)? rb->buf:rb->buf+8;
+	}
+	else
+	{
+		rb->buf=(unsigned char *)malloc(sizeof(char)*(rb->capacity));
+		rb->prealbuf = (unsigned int *)rb->buf;
+	}
 
-        if(NULL == ring->buf) {
-                ERROR("Not enough memory");
-                free(ring);
-                return RB_FATAL_ERROR;
-        }
+	if(NULL == rb->prealbuf)
+	{
+		ERROR("Not enough memory");
+		free(rb);
+		return RB_FATAL_ERROR;
+	}
 
-        *rb = ring;
+	*prb = rb;
 
-        return RB_SUCCESS;
+	return RB_SUCCESS;
 }
 
 void
 rb_destroy(RingBuffer* rb)
 {
-        if(!rb)
-                return;
-        free(rb->buf);
-        free(rb);
+	if(!rb)
+		return;
+	free(rb->prealbuf);
+	free(rb);
 }
 int
-rb_clear (struct OutRingBuffer *rb)
+rb_clear (RingBuffer *rb)
 {
-        memset(rb->buffer,0,rb->size);
-        rb->size = 0;
-        rb->iput=0;
-        rb->iget=0;
-
-        return RB_SUCCESS;
+	memset(rb->buf,0,rb->capacity);
+	rb->size = 0;
+	rb->iwrite=0;
+	rb->iread=0;
+	return RB_SUCCESS;
 }
 
 int
-rb_write (RingBuffer *rb, unsigned char * buf, int len)
+rb_streamsize(RingBuffer * rb)
 {
-        rb->lock = 1;
-		int need_write = 0;
-		if (NULL == buf
+	return (rb->capacity-rb->iwrite);
+}
+
+int
+rb_size(RingBuffer * rb)
+{
+	if(rb->iread<=rb->iwrite)
+	{
+		return (rb->capacity-rb->iwrite+rb->iread);
+	}
+	else
+	{
+		return (rb->iread-rb->iwrite);
+	}
+}
+
+int
+rb_capaciry(RingBuffer * rb)
+{
+	return rb->capacity;
+}
+
+
+int
+rb_write (RingBuffer *rb, unsigned char * buf, unsigned int len)
+{
+	unsigned int need_write = 0;
+	rb->lock = 1;
+
+	if (NULL == rb
+			|| NULL == buf
 			|| len<=0)
-		{
-			ERROR("Not write data to buffer");
-			return 0;
-		}
+	{
+		ERROR("Not write data to buffer");
+		return 0;
+	}
 
-		if(rb->size == rb->capacity) // ringbuf is full
+	if(rb->size == rb->capacity)   // ringbuf is full
+	{
+		ERROR("Buffer is already full");
+		return 0;
+	}
+	else
+	{
+		if(rb->bshiftalltime || rb->b8bytealign)
 		{
-			ERROR("Buffer is already full");
-			return 0;
-		} else {
-			//TODO:			
-
+			need_write = rb->capacity -  rb->size;
+			need_write = (need_write > len)? len:need_write;
+			if(rb->iread != 0)
+			{
+				memcpy(rb->buf, rb->buf+rb->iread, rb->size);
+				rb->iread = 0;
+			}
+			memcpy(rb->buf+rb->size, buf, need_write);
+			rb->iwrite = rb->size += need_write;
 		}
-       
-        b->lock = 0;
-        return 0;
+		else
+		{
+			need_write = rb_streamsize(rb);
+			if(need_write <= rb->min_threshold)
+			{
+				need_write = rb->capacity -  rb->size;
+				need_write = (need_write > len)? len:need_write;
+				if(rb->iread != 0)
+				{
+					memcpy(rb->buf, rb->buf+rb->iread, rb->size);
+					rb->iread = 0;
+				}
+				memcpy(rb->buf+rb->size, buf, need_write);
+				rb->iwrite = rb->size += need_write;
+			}
+			else
+			{
+				need_write = (need_write > len)? len:need_write;
+				memcpy(rb->buf+rb->iwrite, buf, need_write);
+				rb->size += need_write;
+				rb->iwrite  += need_write;
+			}
+		}
+	}
+
+	rb->lock = 0;
+	return 0;
+}
+
+int rb_read (RingBuffer *rb, parser_fun parser)
+{
+	int used = 0;
+	if (NULL == rb
+			|| NULL == parser)
+	{
+		ERROR("Not write data to buffer");
+		return 0;
+	}
+
+	used = parser(rb->buf+rb->iread, rb->size);
+	if(used > 0)
+	{
+		rb->iread -= used;
+		rb->size -= used;
+	}
+	if(rb->bshiftalltime || rb->b8bytealign)
+	{
+		memcpy(rb->buf, rb->buf+rb->iread, rb->size);
+		rb->iread = 0;
+		rb->iwrite = rb->size ;
+	}
+	return used;
 }
