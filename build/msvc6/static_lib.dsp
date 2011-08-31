@@ -85,7 +85,15 @@ LIB32=link.exe -lib
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
+SOURCE=..\..\src\filebuf.c
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\src\ringbuf.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\src\stream.c
 # End Source File
 # End Group
 # Begin Group "Header Files"
@@ -93,7 +101,15 @@ SOURCE=..\..\src\ringbuf.c
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
 # Begin Source File
 
+SOURCE=..\..\include\filebuf.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\..\include\ringbuf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\..\include\stream.h
 # End Source File
 # End Group
 # End Target
